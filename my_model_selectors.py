@@ -111,7 +111,7 @@ class SelectorDIC(ModelSelector):
     def select(self):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-        best_score = float('inf')
+        best_score = float('-inf')
         best_model = None
         M = len(self.hwords) - 1 # -1 because `self.this_word` is ignored
         for n_components in range(self.min_n_components, self.max_n_components+1):
@@ -127,7 +127,7 @@ class SelectorDIC(ModelSelector):
 
                 DIC = logL - logL_others/(M-1)
 
-                if DIC < best_score:
+                if DIC > best_score:
                     best_score = DIC
                     best_model = model
 
