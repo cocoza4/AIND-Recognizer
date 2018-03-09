@@ -21,6 +21,7 @@ class ModelSelector(object):
         self.hwords = all_word_Xlengths
         self.sequences = all_word_sequences[this_word]
         self.X, self.lengths = all_word_Xlengths[this_word]
+        self.n_features = len(self.X[0])
         self.this_word = this_word
         self.n_constant = n_constant
         self.min_n_components = min_n_components
@@ -82,7 +83,9 @@ class SelectorBIC(ModelSelector):
             try:
                 model = self.base_model(n_components)
                 logL = model.score(self.X, self.lengths)
-                BIC = -2 * logL + n_components * math.log(len(self.sequences))
+
+                parameters = n_components**2 + 2*n_components*self.n_features - 1
+                BIC = -2 * logL + parameters * math.log(len(self.X))
 
                 if BIC < best_score:
                     best_score = BIC
@@ -146,27 +149,31 @@ class SelectorCV(ModelSelector):
         best_score = float('-inf')
         best_n_components = self.min_n_components
         for n_components in range(self.min_n_components, self.max_n_components+1):
-            kfold = KFold(n_splits=min(3, len(self.lengths)))
+            try:
+                logLs = []
+                if len(self.lengths) == 1: # can't do cross validation, only 1 sample of word exists
+                    model = self.base_model(n_components)
+                    logLs = [model.score(self.X, self.lengths)]
+                else:
+                    kfold = KFold(n_splits=min(3, len(self.lengths)))
 
-            log_likelihoods = []
-            for train_idx, test_idx in kfold.split(self.sequences):
-                X_train, train_lengths = combine_sequences(train_idx, self.sequences)
-                X_test, test_lengths = combine_sequences(test_idx, self.sequences)
-                
-                try:
-                    model = GaussianHMM(n_components=n_components, n_iter=1000, verbose=False).fit(X_train, train_lengths)
+                    logLs = []
+                    for train_idx, test_idx in kfold.split(self.sequences):
+                        X_train, train_lengths = combine_sequences(train_idx, self.sequences)
+                        X_test, test_lengths = combine_sequences(test_idx, self.sequences)
+                        model = GaussianHMM(n_components=n_components, n_iter=1000, verbose=False).fit(X_train, train_lengths)
 
-                    score = model.score(X_test, test_lengths)
-                    log_likelihoods.append(score)
-                except:
-                    if self.verbose:
-                        print('Unable to train/score the model with {} hidden states'.format(n_components))
-
-            if log_likelihoods: # only check if model is trainable i.e. the `log_likelihood` is not empty.
-                mean_log_likelihood = np.mean(log_likelihoods)
-                if best_score < mean_log_likelihood:
-                    best_score = mean_log_likelihood
-                    best_n_components = n_components
+                        score = model.score(X_test, test_lengths)
+                        logLs.append(score)
+            except:
+                if self.verbose:
+                    print('Unable to train/score the model with {} hidden states'.format(n_components))
+            finally:
+                if logLs: # only check if model is trainable i.e. the `logLs` is not empty.
+                    mean_logLs = np.mean(logLs)
+                    if best_score < mean_logLs:
+                        best_score = mean_logLs
+                        best_n_components = n_components
 
         best_model = self.base_model(best_n_components) # train again with the whole X
         return best_model
